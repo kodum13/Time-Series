@@ -1,0 +1,215 @@
+library(tidyverse)
+install.packages("ggplot2", dependencies = TRUE)
+library(ggplot2)
+library(MASS)
+library(reshape2)
+library(lmtest)
+
+# NPS Data and Sentiment Data
+df_nps <- read.csv(file.choose(), header = T)
+df_cid <- read.csv(file.choose(), header = T)
+
+head(df_nps)
+head(df_cid)
+
+# Rename columns
+col = c("Date", "Language", "Location", "Country", "Prod_NPS", "Brand_NPS", "Design_sat", "Use_sat",
+        "Quality_sat", "Generation", "Segment", "Series", "Product")
+colnames(df_nps) = col
+colnames(df_nps)
+
+df_cid = df_cid[,-c(12)]
+colnames(df_cid)
+col_cid = c("comment_id", "date", "source", "comment", "sentiment", "category", "sub_cat", "terms"
+            , "business_group", "product", "stars")
+colnames(df_cid) = col_cid
+
+# Stars
+df_cid <- df_cid[!duplicated(df_cid$comment_id),]
+agg_cid_count <- aggregate(df_cid$stars, by=list(df_cid$date), FUN=length)[,2]
+agg_cid_mean <- aggregate(df_cid$stars, by=list(df_cid$date), FUN=mean)[,2]
+
+# Business group
+df_comm <- df_cid[df_cid$business_group=="LENOVO - COMMERCIAL",]
+df_consumer <- df_cid[df_cid$business_group=="LENOVO - CONSUMER",]
+df_smb <- df_cid[df_cid$business_group=="LENOVO - SMB",]
+
+agg_comm_count <- aggregate(df_comm$stars, by=list(df_comm$date), FUN=length)[,2]
+agg_comm_mean <- aggregate(df_comm$stars, by=list(df_comm$date), FUN=mean)[,2]
+agg_consumer_count <- aggregate(df_consumer$stars, by=list(df_consumer$date), FUN=length)[,2]
+agg_consumer_mean <- aggregate(df_consumer$stars, by=list(df_consumer$date), FUN=mean)[,2]
+agg_smb_count <- aggregate(df_smb$stars, by=list(df_smb$date), FUN=length)[,2]
+agg_smb_mean <- aggregate(df_smb$stars, by=list(df_smb$date), FUN=mean)[,2]
+
+
+# Create time series
+ts_cid_count <- ts(agg_cid_count, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_cid_mean <- ts(agg_cid_mean, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+
+ts_comm_count <- ts(agg_comm_count, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_comm_mean <- ts(agg_comm_mean, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_consumer_count <- ts(agg_consumer_count, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_consumer_mean <- ts(agg_consumer_mean, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_smb_count <- ts(agg_smb_count, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_smb_mean <- ts(agg_smb_mean, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+library(zoo)
+library(lubridate)
+
+plot(ts_cid_count, main="All Categories Comments Count TS")
+plot(ts_comm_count, main="Commercial Comments Count TS")
+plot(ts_consumer_count, main="Consumer Comments Count TS")
+plot(ts_prod_count, main="NPS All Records Count TS")
+plot(ts_comm_count_nps, main="NPS Commercial Count TS")
+plot(ts_consumer_count_nps, main="NPS Consumer Count TS")
+plot(ts_prod_mean, main="NPS All Records Mean TS")
+plot(ts_comm_mean_nps, main="NPS Commercial Mean TS")
+plot(ts_consumer_mean_nps, main="NPS Consumer Mean TS")
+plot(ts_cid_mean, main="All Categories Comments Stars Mean TS")
+plot(ts_comm_mean, main="Commercial Comments Stars Mean TS")
+plot(ts_consumer_mean, main="Consumer Comments Stars Mean TS")
+
+r <- ts_usa_count
+t <- zoo(r)
+plot(t, xaxt="n", xlab='', ylab="Count", main="NPS USA Records Count Time Series")
+times <- time(t)
+ticks <- seq(times[1], times[length(times)], by=0.16666666666667)
+labs <- seq(ymd('2018-09-01'), ymd('2019-09-21'), length.out = 7)
+axis(1,at=ticks, labels=labs, las=2)
+
+
+plot(ts_smb_count, main="SMB Comments Count TS")
+plot(ts_smb_mean, main="SMB Comments Stars Mean TS")
+plot(ts_smb_count_nps, main="NPS SMB Count TS")
+plot(ts_smb_mean_nps, main="NPS SMB Count TS")
+
+ts_cid_count_dlog <- diff(log(ts_cid_count))
+ts_cid_mean_dlog <- diff(log(ts_cid_mean))
+ts_comm_count_dlog <- diff(log(ts_comm_count))
+ts_comm_mean_dlog <- diff(log(ts_comm_mean))
+ts_consumer_count_dlog <- diff(log(ts_consumer_count))
+ts_consumer_mean_dlog <- diff(log(ts_consumer_mean))
+ts_smb_count_dlog <- diff(log(ts_smb_count))
+ts_smb_mean_dlog <- diff(log(ts_smb_mean))
+
+# ACF and PACF plots
+acfRes <- acf(ts_cid_count_dlog) # autocorrelation
+pacfRes <- pacf(ts_cid_count_dlog)  # partial autocorrelation
+
+acfRes_brand <- acf(ts_cid_mean_dlog) # autocorrelation
+pacfRes_brand <- pacf(ts_cid_mean_dlog)  # partial autocorrelation
+
+####################################################################################
+# NPS time series
+
+ts_df_comm <- df_nps[df_nps$Segment=='Lenovo - Commercial', c(1,5)]
+ts_df_consumer <- df_nps[df_nps$Segment=='Lenovo - Consumer', c(1,5)]
+ts_df_smb <- df_nps[df_nps$Segment=='Lenovo - SMB', c(1,5)]
+
+ts_df_prod <- df_nps[,c(1,5)]
+dat_prod <- ts_df_prod[!is.na(as.numeric(as.character(ts_df_prod$Prod_NPS))),]
+dat_prod$Prod_NPS = as.numeric(dat_prod$Prod_NPS)
+
+dat_comm <- ts_df_comm[!is.na(as.numeric(as.character(ts_df_comm$Prod_NPS))),]
+dat_comm$Prod_NPS = as.numeric(dat_comm$Prod_NPS)
+dat_consumer <- ts_df_consumer[!is.na(as.numeric(as.character(ts_df_consumer$Prod_NPS))),]
+dat_consumer$Prod_NPS = as.numeric(dat_consumer$Prod_NPS)
+dat_smb <- ts_df_smb[!is.na(as.numeric(as.character(ts_df_smb$Prod_NPS))),]
+dat_smb$Prod_NPS = as.numeric(dat_smb$Prod_NPS)
+
+agg_prod_count <- aggregate(dat_prod$Prod_NPS, by=list(dat_prod$Date), FUN=length)[,2]
+agg_prod_mean <- aggregate(dat_prod$Prod_NPS, by=list(dat_prod$Date), FUN=mean)[,2]
+
+agg_comm_count_nps <- aggregate(dat_comm$Prod_NPS, by=list(dat_comm$Date), FUN=length)[,2]
+agg_comm_mean_nps <- aggregate(dat_comm$Prod_NPS, by=list(dat_comm$Date), FUN=mean)[,2]
+
+agg_consumer_count_nps <- aggregate(dat_consumer$Prod_NPS, by=list(dat_consumer$Date), FUN=length)[,2]
+agg_consumer_mean_nps <- aggregate(dat_consumer$Prod_NPS, by=list(dat_consumer$Date), FUN=mean)[,2]
+
+agg_smb_count_nps <- aggregate(dat_smb$Prod_NPS, by=list(dat_smb$Date), FUN=length)[,2]
+agg_smb_mean_nps <- aggregate(dat_smb$Prod_NPS, by=list(dat_smb$Date), FUN=mean)[,2]
+
+ts_prod_count <- ts(agg_prod_count, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_prod_mean <- ts(agg_prod_mean, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_comm_count_nps <- ts(agg_comm_count_nps, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_comm_mean_nps <- ts(agg_comm_mean_nps, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_consumer_count_nps <- ts(agg_consumer_count_nps, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_consumer_mean_nps <- ts(agg_consumer_mean_nps, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_smb_count_nps <- ts(agg_smb_count_nps, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_smb_mean_nps <- ts(agg_smb_mean_nps, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+
+plot(ts_prod_count, main="NPS All Records Count TS")
+plot(ts_prod_mean, main="NPS All Records Mean TS")
+plot(ts_comm_count_nps, main="NPS Commercial Count TS")
+plot(ts_comm_mean_nps, main="NPS Commercial Mean TS")
+plot(ts_consumer_count_nps, main="NPS Consumer Count TS")
+plot(ts_consumer_mean_nps, main="NPS Consumer Mean TS")
+plot(ts_smb_count_nps, main="NPS SMB Count TS")
+plot(ts_smb_mean_nps, main="NPS SMB Count TS")
+
+ts_prod_count_dlog_nps <- diff(log(ts_prod_count))
+ts_prod_mean_dlog_nps <- diff(log(ts_prod_mean))
+
+ts_comm_count_dlog_nps <- diff(log(ts_comm_count_nps))
+ts_comm_mean_dlog_nps <- diff(log(ts_comm_mean_nps))
+ts_consumer_count_dlog_nps <- diff(log(ts_consumer_count_nps))
+ts_consumer_mean_dlog_nps <- diff(log(ts_consumer_mean_nps))
+ts_smb_count_dlog_nps <- diff(log(ts_smb_count_nps))
+ts_smb_mean_dlog_nps <- diff(log(ts_smb_mean_nps))
+
+acfRes <- acf(ts_prod_count_dlog_nps) # autocorrelation
+pacfRes <- pacf(ts_prod_count_dlog_nps)
+
+acfRes <- acf(ts_prod_mean_dlog_nps) # autocorrelation
+pacfRes <- pacf(ts_prod_mean_dlog_nps)
+
+
+ccf(ts_comm_mean_dlog, ts_comm_mean_dlog_nps, lag.max=365, main="Commercial Mean Sentiment -> NPS CCF")
+ccf(ts_consumer_mean_dlog, ts_consumer_mean_dlog_nps, lag.max=365, main="Consumer Mean Sentiment -> NPS CCF")
+ccf(ts_smb_mean_dlog, ts_smb_mean_dlog_nps, lag.max=365, main="SMB Mean Sentiment -> NPS CCF")
+
+
+ccf(ts_comm_count_dlog, ts_comm_count_dlog_nps, lag.max=365, main="Commercial Count Sentiment -> NPS CCF")
+ccf(ts_consumer_count_dlog, ts_consumer_count_dlog_nps, lag.max=365, main="Consumer Count Sentiment -> NPS CCF")
+ccf(ts_smb_count_dlog_nps, ts_smb_count_dlog, lag.max=365, main="SMB Count Sentiment -> NPS CCF")
+
+#############################################################################################################
+df_cid <- read.csv(file.choose(), header = T)
+df_cid = df_cid[,-c(12)]
+colnames(df_cid)
+col_cid = c("comment_id", "date", "source", "comment", "sentiment", "category", "sub_cat", "terms"
+            , "business_group", "product", "stars")
+colnames(df_cid) = col_cid
+
+china_df <- df_nps[df_nps$Location=='CHINA', c(1,5)]
+usa_df <- df_nps[df_nps$Country=='US', c(1,5)]
+
+china_prod <- china_df[!is.na(as.numeric(as.character(china_df$Prod_NPS))),]
+china_prod$Prod_NPS = as.numeric(china_prod$Prod_NPS)
+
+agg_china_count <- aggregate(china_prod$Prod_NPS, by=list(china_prod$Date), FUN=length)[,2]
+agg_china_mean <- aggregate(china_prod$Prod_NPS, by=list(china_prod$Date), FUN=mean)[,2]
+
+ts_china_count <- ts(agg_china_count, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_china_mean <- ts(agg_china_mean, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+
+usa_prod <- usa_df[!is.na(as.numeric(as.character(usa_df$Prod_NPS))),]
+usa_prod$Prod_NPS = as.numeric(usa_prod$Prod_NPS)
+
+agg_usa_count <- aggregate(usa_prod$Prod_NPS, by=list(usa_prod$Date), FUN=length)[,2]
+agg_usa_mean <- aggregate(usa_prod$Prod_NPS, by=list(usa_prod$Date), FUN=mean)[,2]
+
+ts_usa_count <- ts(agg_usa_count, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+ts_usa_mean <- ts(agg_usa_mean, frequency = 365, start = c(2018,9,1), end = c(2019,9,21))
+
+plot(ts_china_count, main="NPS Chinese Records Count TS")
+plot(ts_china_mean, main="NPS Chinese Mean TS")
+plot(ts_usa_count, main="NPS USA Records Count TS")
+plot(ts_usa_mean, main="NPS USA Mean TS")
+
+ts_china_count_dlog_nps <- diff(log(ts_china_count))
+ts_china_mean_dlog_nps <- diff(log(ts_china_mean))
+ts_usa_count_dlog_nps <- diff(log(ts_usa_count))
+ts_usa_mean_dlog_nps <- diff(log(ts_usa_mean))
+
+ccf(ts_china_count_dlog_nps, ts_usa_count_dlog_nps, lag.max=365, main="Count China -> USA NPS CCF")
+ccf(ts_china_mean_dlog_nps, ts_usa_mean_dlog_nps, lag.max=365, main="Mean China -> USA NPS CCF")
