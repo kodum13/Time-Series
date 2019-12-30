@@ -1,0 +1,90 @@
+library(astsa)
+
+# Plot the original chicken data
+par(mfrow=c(1,1))
+chick <- ts(chicken)
+plot(chick, main="Time Series of Chicken Data")
+acf2(chick, main="ACF and PACF of Chicken Data")
+
+# Create the differenced chicken data
+xd <- diff(chick)
+acf2(xd, main="ACF and PACF of Differenced Chicken Data XD")
+# Create periodograms for the differenced data with different kernels
+k1 = kernel("daniell", c(1))
+k2 = kernel("daniell", c(3,5))
+k3 = kernel("daniell", c(10,10))
+spectrum(xd, spans=k1, log="no", main="Daniell m=1 Smoothed Periodogram XD")
+spectrum(xd, spans=k2, log="no", main="Daniell m=c(3,5) Smoothed Periodogram XD")
+spectrum(xd, spans=k3, log="no", main="Daniell m=c(10,10) Smoothed Periodogram XD")
+
+# Fit with 12 montly factors
+fit_12 <- arima(xd,order=c(12,0,0))
+print(fit_12)
+
+# Create residuals and periodograms for the residuals with different kernels
+rxd <- fit_12$residuals
+
+k1 = kernel("daniell", c(1))
+k2 = kernel("daniell", c(3,5))
+k3 = kernel("daniell", c(10,10))
+spectrum(rxd, spans=k1, log="no", main="Daniell m=1 Smoothed Periodogram Residuals XD")
+spectrum(rxd, spans=k2, log="no", main="Daniell m=c(3,5) Smoothed Periodogram Residuals XD")
+spectrum(rxd, spans=k3, log="no", main="Daniell m=c(10,10) Smoothed Periodogram Residuals XD")
+
+# Converts spec.pgram results into dataframe with only spec and freq columns
+xd_spec <- spec.pgram(xd,kernel=k2,log="no")
+xd_df <- data.frame("spec" = xd_spec$spec, "freq"=xd_spec$freq)
+xd_spec_peak <- sort(xd_df$spec, decreasing=TRUE)[1]
+xd_spec_peak
+xd_top_freq <- xd_df[which(xd_df$spec==xd_spec_peak),]
+xd_top_freq
+
+# Converts spec.pgram results into dataframe with only spec and freq columns
+rxd_spec <- spec.pgram(rxd,kernel=k2,log="no")
+rxd_df <- data.frame("spec" = rxd_spec$spec, "freq"=rxd_spec$freq)
+# Finds spec value at frequency of highest peak in xd series
+rxd_freq <- rxd_df[which(rxd_spec$freq==xd_top_freq$freq),]
+rxd_freq
+
+rxd_spec_1 <- sort(rxd_df$spec, decreasing=TRUE)[1]
+rxd_top_freq <- rxd_df[which(rxd_df$spec==rxd_spec_1),]
+rxd_top_freq
+rxd_spec_2 <- sort(rxd_df$spec, decreasing=TRUE)[2]
+rxd_top_freq_2 <- rxd_df[which(rxd_df$spec==rxd_spec_2),]
+rxd_top_freq_2
+
+#######################################################################################
+set.seed = 123
+gen_arma <- arima.sim(n=512,list(ar=c(.2,.4), ma=c(-.1,1)),sd=1)
+plot(gen_arma, main="Generated Data Time Series")
+
+f_w = c();
+omega = seq(from=0, to=.5, by=.01)
+for (i in 1:length(omega)) {
+  f_w[i] <- (1/2*pi)*abs((2.01-.4*cos(2*pi*omega[i])+2*cos(4*pi*omega[i]))/(1.2-2.4*cos(2*pi*omega[i])-.8*cos(4*pi*omega[i])))
+}
+plot(omega,f_w, xlab="frequency", ylab="spectrum", main="True spectral density")
+
+par2 <- spec.ar(gen_arma, order=2, main="AR-parametric estimate Order 2")
+par8 <- spec.ar(gen_arma, order=8, main="AR-parametric estimate Order 8")
+par20 <- spec.ar(gen_arma, order=20, main="AR-parametric estimate Order 20")
+
+#######################################################################################
+
+rec_ts <- ts(rec)
+rec_spec <- mvspec(rec_ts, kernel('daniell',5),log="no", main="Rec Data Periodogram m=5")
+rec_raw <- mvspec(rec_ts,log="no")
+
+# Find the degrees of freedom and chi-squared values for 90%
+df <- rec_spec$df
+df
+U = qchisq(.05, df)
+U
+L = qchisq(.95, df)
+L
+# Returns the spec value at omega=1/12
+rec_spec$spec[40]
+
+# Lower and upper limit for the confidence interval
+df*rec_spec$spec[40]/L
+df*rec_spec$spec[40]/U
